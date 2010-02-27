@@ -1,0 +1,57 @@
+==Overview==
+
+soric is a modular, declarative IRC client.
+
+It is designed to accomplish a goal.  One does not give commands to soric in
+a conventional sense; instead, one changes its configuration, and it
+automatically attempts to reach that state.  Autoconnection, reconnection, and
+connection are all the same in soric, for instance.  Generally, soric does
+not handle cooked data, only objective IRC data and your configuration values.
+
+Modularity means that soric consists of many parts which can be combined for
+various levels of functionality.  It can make either a full-featured user
+client or a relatively lean (and user-invisible) bot engine.
+
+==Usage example (bot)==
+
+    # To support operation as a client, soric uses AnyEvent to support most GUIs.
+    # Thus, you must load an event module yourself.
+    use EV;
+    use SORIC3::Kernel;
+
+    my $kernel = SORIC3::Kernel->new(
+        # When the kernel is used directly, configuration values are passed to
+        # the constructor and are not persistant between runs.  If you want
+        # persistance of configuration, pass an instance of
+        # SORIC3::ConfigDelegate instead.
+        #
+        # The configuration document has YAML-like structure.  Perhaps this
+        # should be more explicit?
+        'connection.servers.freenode.host' => 'irc.freenode.net',
+        'connection.servers.freenode.nick' => 'SampleBot',
+
+        'channels.freenode.#soric' => '',
+
+        'identify.freenode' => 'xyzzy',
+
+        'core.modules' => 'connection,channel,identify,SampleBot'
+    );
+
+    $kernel->start;
+    EV::loop;
+
+    package SampleBot;
+    use Moose;
+    extends 'SORIC3::Module';
+
+    sub react
+    {
+        my ($self, $message) = @_;
+
+        if ($message->type eq 'privmsg' &&
+            $message->content =~ /^@factor\s+(\d+)$/)
+        {
+            $self->public_reply($message, qx/factor $1/);
+        }
+    }
+
