@@ -4,123 +4,36 @@ use MooseX::Declare;
 # correctly routed through the queueing system
 
 class Soric3::Module::Irc extends Soric3::Module
-    with (Soric3::Role::SendQueueObserver,
-          Soric3::Role::SendQueue)
+    with (Soric3::Role::SendQueueObserver)
 {
     use AnyEvent::IRC::Client;
 
     has _connects => (
-        isa     => 'HashRef[AnyEvent::IRC::Client]',
+        isa     => 'HashRef[Soric3::Module::Irc::Connection]',
         is      => 'bare',
         default => sub { {} },
         traits  => ['Hash'],
         handles => { _connection => 'get',
                      _bind_connection => 'set',
+                     _unbind_connection => 'delete',
                      enum_irc_connections => 'keys' },
     );
 
     method on_new_sends(Str $conn_name) {
-        if ((my $conn = $self->_connection($conn_name))
-                && $conn->{heap}->{next_send_time} <= AnyEvent->now) {
-            $self->alert;
-        }
-    }
-
-    method is_ready(Str $conn_name) {
-        my $conn = $self->_connection($conn_name)
-            || return 0;
-        return ($conn->{heap}->{next_send_time} <= AnyEvent->now
-             && $conn->registered);
-    }
-
-    has _token_watcher => (is => 'rw');
-
-    method react() {
-        my $min_timeout = undef;
-
-        for my $conn_name ($self->enum_irc_connections) {
-            my $conn = $self->_connection($conn_name);
-
-            while ($conn->{heap}->{next_send_time} <= AnyEvent->now) {
-
-                my ($best_prio, $best_msg, $best_cb) = (0, undef, undef);
-
-                $self->broadcast('SendQueue', 'get_queued_send', $conn_name,
-                    sub {
-                        my ($prio, $msg, $cb) = @_;
-
-                        if ($prio > $best_prio) {
-                            $best_prio = $prio;
-                            $best_msg = $msg;
-                            $best_cb = $cb;
-                        }
-                    });
-
-                last if !defined($best_msg);
-
-                $self->log(debug => 'Sending ' . join(",", @$msg) .
-                           " to $conn_name");
-                $conn->send_srv(@$msg);
-
-                # this could retrigger us, but that's harmless
-                $cb->();
-
-
-                my $time = $conn->{heap}->{next_send_time};
-                $time = AnyEvent->now - 10 if $time < AnyEvent->now - 10;
-
-                $time += (2 + length(mkmsg(undef, @$msg)) / 100);
-
-                $conn->{heap}->{next_send_time} = $time;
-            }
-
-            if ($conn->{heap}->{next_send_time} > AnyEvent->now) {
-                my $delay = $conn->{heap}->{next_send_time} - AnyEvent->now;
-
-                if ($delay < $min_timeout || !defined($min_timeout)) {
-                    $min_timeout = $delay;
-                }
-            }
-        }
-
-        if (defined $min_timeout) {
-            my $weak_self = $self;
-            weaken $weak_self;
-
-            $self->_token_watcher(AnyEvent->timer(after => $min_timeout,
-                cb => sub { $weak_self->alert if defined $weak_self }));
-        } else {
-            $self->_token_watcher(undef);
+        if ((my $conn = $self->_connection($conn_name)) {
+            $conn->new_sends;
         }
     }
 
     method new_connection(Str $tag, Str $host, Num $port, Str $nick,
             Str $password, Str $user, Str $real) {
-        my $new_conn = AnyEvent::IRC::Client->new;
-        $new_conn->{heap}->{tag} = $tag;
+        my $new_conn = Soric3::Module::Irc::Connection->new(
+            tag => $tag, backref => $self);
+
         $self->_bind_connection($tag, $new_conn);
         $new_conn->connect($host, $port,
             { nick => $nick, user => $user, real => $real,
               password => $password });
-        $new_conn->{heap}->{backref} = $self;
-        Scalar::Util::weaken $new_conn->{heap}->{backref};
-        $new_conn->reg_cb(
-            registered => sub {
-                my $conn = shift;
-                $conn->{heap}->{backref}->alert
-                    if defined $conn->{heap}->{backref};
-            },
-            connect => sub {
-                my ($conn, $err) = @_;
-                return unless defined $err;
-                return unless defined $conn->{heap}->{backref};
-                $conn->{heap}->{failed} = $err;
-                $conn->{heap}->{backref}->broadcast(
-                    'ConnectionObserver', 'connection_state_changed',
-                    $tag, 'failed');
-            },
-            # TODO handle connection loss, messages of all kinds
-        );
 
         $self->broadcast('ConnectionObserver', 'connection_created', $tag);
     }
@@ -133,5 +46,116 @@ class Soric3::Module::Irc extends Soric3::Module
 
         $self->_unbind_connection($tag);
         $self->broadcast('ConnectionObserver', 'connection_deleted', $tag);
+    }
+}
+
+class Soric3::Module::Irc::Connection
+        with (Soric3::Role::Alertable, Soric3::Role::SendQueue) {
+    use List::Util 'max';
+
+    has connection => (
+        is      => 'ro',
+        isa     => 'AnyEvent::IRC::Client',
+        default => sub { AnyEvent::IRC::Client->new },
+        handles => qr/.*/,
+    );
+
+    has backref => (
+        isa      => 'Soric3::Module::Irc',
+        is       => 'ro',
+        weak_ref => 1,
+        handles  => [qw/broadcast log/],
+    );
+
+    has next_send_time => (
+        isa     => 'Num',
+        is      => 'rw',
+        default => sub { AnyEvent->now - 10 },
+    );
+
+    has tag => (
+        isa => 'Str',
+        is  => 'rw',
+    );
+
+    method new_sends() {
+        $self->alert if $self->is_ready;
+    }
+
+    method BUILD() {
+        $self->reg_cb(
+            registered => sub { shift->alert },
+            connect => sub {
+                my ($self, $err) = @_;
+                return unless defined $err;
+                $self->failed($err);
+
+                $self->broadcast(
+                    'ConnectionObserver', 'connection_state_changed',
+                    $self->tag, 'failed', $err) if $self->backref;
+            },
+            before_irc_ping => sub {
+                my ($self, $msg) = @_;
+
+                # Prevent AnyEvent::IRC from handling the ping itself - we
+                # want pongs to go through the reply scheduler
+                $self->stop_event;
+
+                # TODO make this configurable
+                my $deadline = AnyEvent->now + 60;
+
+                $self->queue_message($self->tag, [PONG => $msg->{params}->[0]],
+                    sub { (AnyEvent->now >= $deadline) ? 3 : 1 });
+            },
+            # TODO handle connection loss, messages of all kinds
+        );
+    }
+
+    method is_ready() {
+        return ($self->next_send_time <= AnyEvent->now
+             && $self->registered);
+    }
+
+    method _penalty(Num $adj) {
+        $self->next_send_time($adj + max($self->next_send_time,
+                                         AnyEvent->now - 10));
+    }
+
+    method _service() {
+        my ($best_prio, $best_msg, $best_cb) = (0, undef, undef);
+
+        $self->broadcast('Send', 'get_queued_send', $self->tag,
+            sub {
+                my ($prio, $msg, $cb) = @_;
+
+                if ($prio > $best_prio) {
+                    $best_prio = $prio;
+                    $best_msg = $msg;
+                    $best_cb = $cb;
+                }
+            });
+
+        return 0 if !defined($best_msg);
+
+        $self->log(debug => 'Sending ' . join(",", @$msg) .
+                   " to " . $self->tag);
+        $self->send_srv(@$msg);
+
+        # this could retrigger us, but that's harmless
+        $cb->();
+
+        $self->_penalty(2);
+
+        return 1;
+    }
+
+    method react() {
+        return if !defined($self->backref);
+
+        $self->_service while $self->is_ready;
+
+        if ($self->registered && !$self->is_ready) {
+            $self->alert_at($self->next_send_time);
+        }
     }
 }
