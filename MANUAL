@@ -55,3 +55,20 @@ client or a relatively lean (and user-invisible) bot engine.
         }
     }
 
+===Correctness reasoning===
+
+The best way to think about SORIC correctness that I know of is as a digital
+event network, with nodes for each variable that can change and edges when
+changes in one can cause changes in others.  Due to non-simultaneity of event
+processing, it is critical to correctly handle the case where an event is seen
+but no net change occurs, and to not generate events except when changes occur.
+
+The polarity of a change cannot be passed in the event.  Consider the case
+where an early listener sees a flag rise, and then lowers it.  The lowering
+event will be completely dispatched before the raising event continues!
+Instead, use a simple changed event and require listeners to query the new
+value.
+
+Special attention must be given to loops in the graph, as they can cause
+infinite recursion at runtime.  Whenever such a loop occurs, it must be at
+least monostable.
