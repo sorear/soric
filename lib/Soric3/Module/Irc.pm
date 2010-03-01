@@ -62,7 +62,6 @@ class Soric3::Module::Irc extends Soric3::Module
 class Soric3::Module::Irc::Connection
         with (Soric3::Role::AlertAt, Soric3::Role::SendQueue) {
     use List::Util 'max';
-    use JSON;
 
     has connection => (
         is      => 'ro',
@@ -112,11 +111,16 @@ class Soric3::Module::Irc::Connection
                     $wself->tag) if $wself->backref;
             },
             debug_send => sub {
+                my (undef, @msg) = @_;
+                my $fmsg = AnyEvent::IRC::Util::mk_msg(undef, @msg);
                 shift; $wself->log(debug =>
-                    sprintf("%15s <- %s", $wself->tag, encode_json([@_]))); },
+                    sprintf("%15s <- %s", $wself->tag, $fmsg)); },
             debug_recv => sub {
+                my (undef, $msg) = @_;
+                my $fmsg = AnyEvent::IRC::Util::mk_msg($msg->{prefix},
+                    $msg->{command}, @{ $msg->{params} });
                 $wself->log(debug =>
-                    sprintf("%15s -> %s", $wself->tag, encode_json($_[1]))); },
+                    sprintf("%15s -> %s", $wself->tag, $fmsg)); },
             connect => sub {
                 my ($conn, $err) = @_;
                 $wself->error($err);

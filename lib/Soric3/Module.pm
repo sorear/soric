@@ -25,6 +25,7 @@ class Soric3::Module {
 
     method log(Str $prio, Str $text) {
         # TODO proper logging
-        warn ref($self) . " - [$prio] $text\n";
+        my ($cap) = (ref($self) =~ /.*::(.*)/);
+        print STDERR $cap . " - [" . substr($prio,0,2) . "] $text\n";
     }
 }
