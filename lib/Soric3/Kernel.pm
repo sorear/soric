@@ -7,7 +7,7 @@ use MooseX::Declare;
 # the configuration logic should be hard-coded, kept in a separate module
 # with delegation... XXX investigate possible Moose models, study Kioku/DBIC
 
-class Soric3::Kernel with Soric3::Meta::Alertable {
+class Soric3::Kernel {
     has _modules => (
         isa     => 'HashRef[Soric3::Module]',
         is      => 'bare',

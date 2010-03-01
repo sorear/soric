@@ -51,7 +51,7 @@ class Soric3::Module::Irc extends Soric3::Module
 }
 
 class Soric3::Module::Irc::Connection
-        with (Soric3::Role::Alertable, Soric3::Role::SendQueue) {
+        with (Soric3::Role::AlertAt, Soric3::Role::SendQueue) {
     use List::Util 'max';
 
     has connection => (
@@ -78,10 +78,6 @@ class Soric3::Module::Irc::Connection
         isa => 'Str',
         is  => 'rw',
     );
-
-    method new_sends() {
-        $self->alert if $self->is_ready;
-    }
 
     method BUILD() {
         $self->reg_cb(
@@ -112,6 +108,10 @@ class Soric3::Module::Irc::Connection
         );
     }
 
+    method new_sends() {
+        $self->_service;
+    }
+
     method is_ready() {
         return ($self->next_send_time <= AnyEvent->now
              && $self->registered);
@@ -122,7 +122,7 @@ class Soric3::Module::Irc::Connection
                                          AnyEvent->now - 10));
     }
 
-    method _service() {
+    method _service_once() {
         my ($best_prio, $best_msg, $best_cb) = (0, undef, undef);
 
         $self->broadcast('Send', 'get_queued_send', $self->tag,
@@ -150,12 +150,15 @@ class Soric3::Module::Irc::Connection
         return 1;
     }
 
-    method react() {
+    method alert() {
         return if !defined($self->backref);
+        $self->cancel_alert;
 
-        $self->_service while $self->is_ready;
+        while ($self->is_ready) {
+            $self->_service_once || return;
+        }
 
-        if ($self->registered && !$self->is_ready) {
+        if ($self->registered) {
             $self->alert_at($self->next_send_time);
         }
     }
