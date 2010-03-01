@@ -25,6 +25,11 @@ class Soric3::Module::Irc extends Soric3::Module
         }
     }
 
+    method connection_status(Str $tag) {
+        return !$self->_connection($tag) ? 'nonexistant' :
+            $self->_connection($tag)->status;
+    }
+
     method new_connection(Str :$tag, Str :$host, Num :$port = 6667,
             Str :$nickname, Str :$password?, Str :$username = 'soric',
             Str :$realname = 'Generic SORIC-based bot') {
@@ -85,9 +90,12 @@ class Soric3::Module::Irc::Connection
     );
 
     has error => (
-        isa       => 'Any',
-        predicate => 'failed',
-        is        => 'rw',
+        is => 'rw',
+    );
+
+    has status => (
+        is      => 'rw',
+        default => 'connecting',
     );
 
     method BUILD( $ ) {
@@ -95,7 +103,14 @@ class Soric3::Module::Irc::Connection
         Scalar::Util::weaken $wself;
 
         $self->connection->reg_cb(
-            registered => sub { $wself->alert },
+            registered => sub {
+                $wself->alert;
+                $wself->status('registered');
+
+                $wself->broadcast(
+                    'ConnectionObserver', 'connection_status_changed',
+                    $wself->tag) if $wself->backref;
+            },
             debug_send => sub {
                 shift; $wself->log(debug =>
                     sprintf("%15s <- %s", $wself->tag, encode_json([@_]))); },
@@ -104,8 +119,18 @@ class Soric3::Module::Irc::Connection
                     sprintf("%15s -> %s", $wself->tag, encode_json($_[1]))); },
             connect => sub {
                 my ($conn, $err) = @_;
-                return unless defined $err;
                 $wself->error($err);
+                $wself->status($err ? 'connect_failed' : 'connected');
+
+                $wself->broadcast(
+                    'ConnectionObserver', 'connection_status_changed',
+                    $wself->tag) if $wself->backref;
+            },
+            disconnect => sub {
+                my ($conn, $text) = @_;
+                # XXX scraping sucks, let's rewrite AnyEvent::IRC
+                $wself->error($text);
+                $wself->status('disconnected');
 
                 $wself->broadcast(
                     'ConnectionObserver', 'connection_status_changed',
