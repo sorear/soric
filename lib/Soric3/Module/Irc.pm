@@ -19,7 +19,7 @@ class Soric3::Module::Irc extends Soric3::Module
                      enum_irc_connections => 'keys' },
     );
 
-    method on_sends_changed(Str $conn_name) {
+    method sends_changed(Str $conn_name) {
         if ((my $conn = $self->_connection($conn_name)) {
             $conn->sends_changed;
         }
@@ -110,7 +110,7 @@ class Soric3::Module::Irc::Connection
                 my $deadline = AnyEvent->now + 60;
 
                 $self->queue_message($self->tag, [PONG => $msg->{params}->[0]],
-                    sub { (AnyEvent->now >= $deadline) ? 3 : 1 });
+                    sub { (AnyEvent->now >= $deadline) ? 'urgent' : 'daemon' });
             },
             # TODO handle connection loss, messages of all kinds
         );
@@ -136,6 +136,8 @@ class Soric3::Module::Irc::Connection
         $self->broadcast('Send', 'get_queued_send', $self->tag,
             sub {
                 my ($prio, $msg, $cb) = @_;
+
+                $prio = ({ daemon => 1, user => 2, urgent => 3})->{$prio};
 
                 if ($prio > $best_prio) {
                     $best_prio = $prio;
