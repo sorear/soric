@@ -28,6 +28,7 @@ class Soric3::Module::Irc extends Soric3::Module
     method new_connection(Str :$tag, Str :$host, Num :$port = 6667,
             Str :$nickname, Str :$password?, Str :$username = 'soric',
             Str :$realname = 'Generic SORIC-based bot') {
+        $self->log(debug => "Opening new connection to $host as '$tag'");
         my $new_conn = Soric3::Module::Irc::Connection->new(
             tag => $tag, backref => $self);
 
@@ -38,6 +39,7 @@ class Soric3::Module::Irc extends Soric3::Module
 
         $self->broadcast('ConnectionObserver', 'connection_status_changed',
             $tag);
+        $self->log(debug => "Connection object created.");
     }
 
     method delete_connection(Str $tag, Str $reason) {
@@ -87,37 +89,41 @@ class Soric3::Module::Irc::Connection
         is        => 'rw',
     );
 
-    method BUILD() {
-        $self->reg_cb(
-            registered => sub { shift->alert },
-            connect => sub {
-                my ($self, $err) = @_;
-                return unless defined $err;
-                $self->error($err);
+    method BUILD( $ ) {
+        my $wself = $self;
+        Scalar::Util::weaken $wself;
 
-                $self->broadcast(
+        $self->connection->reg_cb(
+            registered => sub { $wself->alert },
+            connect => sub {
+                my ($conn, $err) = @_;
+                return unless defined $err;
+                $wself->error($err);
+
+                $wself->broadcast(
                     'ConnectionObserver', 'connection_status_changed',
-                    $self->tag) if $self->backref;
+                    $wself->tag) if $wself->backref;
             },
             before_irc_ping => sub {
-                my ($self, $msg) = @_;
+                my ($conn, $msg) = @_;
 
                 # Prevent AnyEvent::IRC from handling the ping itself - we
                 # want pongs to go through the reply scheduler
-                $self->stop_event;
+                $conn->stop_event;
 
                 # TODO make this configurable
                 my $deadline = AnyEvent->now + 60;
 
-                $self->queue_message($self->tag, [PONG => $msg->{params}->[0]],
+                $wself->queue_message($wself->tag,
+                    [PONG => $msg->{params}->[0]],
                     sub { (AnyEvent->now >= $deadline) ? 'urgent' : 'daemon' });
             },
             # TODO handle connection loss, messages of all kinds
         );
     }
 
-    method new_sends() {
-        $self->_service;
+    method sends_changed() {
+        $self->alert;
     }
 
     method is_ready() {
@@ -152,10 +158,10 @@ class Soric3::Module::Irc::Connection
                    " to " . $self->tag);
         $self->send_srv(@$best_msg);
 
+        $self->_penalty(2);
+
         # this could retrigger us, but that's harmless
         $best_cb->();
-
-        $self->_penalty(2);
 
         return 1;
     }

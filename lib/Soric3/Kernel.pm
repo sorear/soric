@@ -52,10 +52,6 @@ class Soric3::Kernel {
     method _install_modules() {
         my %used;
 
-        $self->_bind_module(CLIENT =>
-            $self->client_class->new_object(kernel => $self))
-                unless defined $self->module('CLIENT');
-
         $self->_load_module(\%used, $_)
             for ($self->client_class->name->requirements);
 
@@ -65,9 +61,14 @@ class Soric3::Kernel {
 
             $self->_unload_module($mod);
         }
+
+        print "creating client...\n";
+        $self->_bind_module(CLIENT =>
+            $self->client_class->name->new(kernel => $self))
+                unless defined $self->module('CLIENT');
     }
 
-    method BUILD {
+    method BUILD($) {
         $self->_install_modules;
     }
 }

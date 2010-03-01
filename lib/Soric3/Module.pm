@@ -8,16 +8,17 @@ class Soric3::Module {
         is       => 'ro',
         required => 1,
         weak_ref => 1,
+        handles  => ['module'],
     );
 
     method requirements($class:) {
         return ();
     }
 
-    method broadcast(RoleName $obsrole, Str $method, @args) {
+    method broadcast(Str $obsrole, Str $method, @args) {
         return if !$self->kernel;
         for my $receiver ($self->kernel->modules) {
-            next if !$receiver->does($obsrole);
+            next if !$receiver->does('Soric3::Role::' . $obsrole);
             $receiver->$method(@args);
         }
     }

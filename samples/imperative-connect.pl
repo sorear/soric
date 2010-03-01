@@ -9,11 +9,13 @@ my $client = class extends Soric3::Module with Soric3::Role::SendQueue {
         'Irc'
     }
 
-    method BUILD() {
+    method BUILD( $ ) {
+        $self->log(debug => 'Entering client code.');
         $self->module('Irc')->new_connection(
             tag => 'freenode', nickname => 'soric-test',
             host => 'irc.freenode.net');
-        $self->queue_send(freenode => [PRIVMSG => sorear => 'Hello!']);
+        $self->queue_message(freenode => [PRIVMSG => sorear => 'Hello!']);
+        $self->log(debug => 'Message queued.');
     }
 };
 

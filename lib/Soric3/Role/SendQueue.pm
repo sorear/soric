@@ -1,5 +1,7 @@
 use MooseX::Declare;
 
+# TODO we should use unique integer ids here for servers, not reusable tags
+
 role Soric3::Role::SendQueue with Soric3::Role::Send {
     has _send_queues => (
         default  => sub { {} },
