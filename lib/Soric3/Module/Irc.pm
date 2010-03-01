@@ -20,20 +20,20 @@ class Soric3::Module::Irc extends Soric3::Module
     );
 
     method sends_changed(Str $conn_name) {
-        if ((my $conn = $self->_connection($conn_name)) {
+        if ((my $conn = $self->_connection($conn_name))) {
             $conn->sends_changed;
         }
     }
 
     method new_connection(Str :$tag, Str :$host, Num :$port = 6667,
-            Str :$nickname, Str :$password = undef, Str :$username = 'soric',
+            Str :$nickname, Str :$password?, Str :$username = 'soric',
             Str :$realname = 'Generic SORIC-based bot') {
         my $new_conn = Soric3::Module::Irc::Connection->new(
             tag => $tag, backref => $self);
 
         $self->_bind_connection($tag, $new_conn);
         $new_conn->connect($host, $port,
-            { nick => $nick, user => $user, real => $real,
+            { nick => $nickname, user => $username, real => $realname,
               password => $password });
 
         $self->broadcast('ConnectionObserver', 'connection_status_changed',
@@ -148,12 +148,12 @@ class Soric3::Module::Irc::Connection
 
         return 0 if !defined($best_msg);
 
-        $self->log(debug => 'Sending ' . join(",", @$msg) .
+        $self->log(debug => 'Sending ' . join(",", @$best_msg) .
                    " to " . $self->tag);
-        $self->send_srv(@$msg);
+        $self->send_srv(@$best_msg);
 
         # this could retrigger us, but that's harmless
-        $cb->();
+        $best_cb->();
 
         $self->_penalty(2);
 

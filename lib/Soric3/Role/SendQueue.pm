@@ -10,7 +10,8 @@ role Soric3::Role::SendQueue with Soric3::Role::Send {
 
     requires "broadcast";
 
-    method queue_message(Str $tag, ArrayRef $msg, CodeRef | Str $prio) {
+    method queue_message(Str $tag, ArrayRef $msg,
+            CodeRef | Str $prio = 'daemon') {
         push @{ $self->_send_queues->{$tag} },
             [ $msg, ref $prio ? $prio : sub { $prio } ];
 
@@ -31,3 +32,5 @@ role Soric3::Role::SendQueue with Soric3::Role::Send {
         }
     }
 }
+
+1;

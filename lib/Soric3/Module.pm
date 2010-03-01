@@ -10,7 +10,8 @@ class Soric3::Module {
         weak_ref => 1,
     );
 
-    method requires($class:) {
+    method requirements($class:) {
+        return ();
     }
 
     method broadcast(RoleName $obsrole, Str $method, @args) {

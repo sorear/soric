@@ -5,7 +5,7 @@ use Soric3::Kernel;
 use AnyEvent;
 
 my $client = class extends Soric3::Module with Soric3::Role::SendQueue {
-    method requires($class:) {
+    method requirements($class:) {
         'Irc'
     }
 
@@ -19,4 +19,4 @@ my $client = class extends Soric3::Module with Soric3::Role::SendQueue {
 
 my $kernel = Soric3::Kernel->new(client_class => $client);
 
-AnyEvent->cond_var->recv;
+AnyEvent->condvar->recv;
