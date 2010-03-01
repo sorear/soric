@@ -19,9 +19,9 @@ class Soric3::Module::Irc extends Soric3::Module
                      enum_irc_connections => 'keys' },
     );
 
-    method on_new_sends(Str $conn_name) {
+    method on_sends_changed(Str $conn_name) {
         if ((my $conn = $self->_connection($conn_name)) {
-            $conn->new_sends;
+            $conn->sends_changed;
         }
     }
 
@@ -36,7 +36,8 @@ class Soric3::Module::Irc extends Soric3::Module
             { nick => $nick, user => $user, real => $real,
               password => $password });
 
-        $self->broadcast('ConnectionObserver', 'connection_created', $tag);
+        $self->broadcast('ConnectionObserver', 'connection_status_changed',
+            $tag);
     }
 
     method delete_connection(Str $tag, Str $reason) {
@@ -46,7 +47,8 @@ class Soric3::Module::Irc extends Soric3::Module
         $conn->disconnect($reason);
 
         $self->_unbind_connection($tag);
-        $self->broadcast('ConnectionObserver', 'connection_deleted', $tag);
+        $self->broadcast('ConnectionObserver', 'connection_status_changed',
+            $tag);
     }
 }
 
@@ -79,17 +81,23 @@ class Soric3::Module::Irc::Connection
         is  => 'rw',
     );
 
+    has error => (
+        isa       => 'Any',
+        predicate => 'failed',
+        is        => 'rw',
+    );
+
     method BUILD() {
         $self->reg_cb(
             registered => sub { shift->alert },
             connect => sub {
                 my ($self, $err) = @_;
                 return unless defined $err;
-                $self->failed($err);
+                $self->error($err);
 
                 $self->broadcast(
-                    'ConnectionObserver', 'connection_state_changed',
-                    $self->tag, 'failed', $err) if $self->backref;
+                    'ConnectionObserver', 'connection_status_changed',
+                    $self->tag) if $self->backref;
             },
             before_irc_ping => sub {
                 my ($self, $msg) = @_;

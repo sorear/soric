@@ -13,6 +13,7 @@ class Soric3::Kernel {
         is      => 'bare',
         default => sub { {} },
         handles => { loaded_modules => 'keys',
+                     modules        => 'values',
                      module_loaded  => 'exists',
                      _bind_module   => 'set',
                      module         => 'get',
@@ -26,7 +27,7 @@ class Soric3::Kernel {
                           # munging of client classes?  I like this
     );
 
-    # Do a preorder traversal of the module dependancy tree, instantiating and
+    # Do a postorder traversal of the module dependancy tree, instantiating and
     # binding all new modules, and removing unused ones.
     method _load_module(HashRef $used, Str $name where { $_ =~ /^[a-z]+$/ }) {
         return if $used->{$name};
