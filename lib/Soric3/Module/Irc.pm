@@ -25,8 +25,9 @@ class Soric3::Module::Irc extends Soric3::Module
         }
     }
 
-    method new_connection(Str $tag, Str $host, Num $port, Str $nick,
-            Str $password, Str $user, Str $real) {
+    method new_connection(Str :$tag, Str :$host, Num :$port = 6667,
+            Str :$nickname, Str :$password = undef, Str :$username = 'soric',
+            Str :$realname = 'Generic SORIC-based bot') {
         my $new_conn = Soric3::Module::Irc::Connection->new(
             tag => $tag, backref => $self);
 

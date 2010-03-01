@@ -19,6 +19,13 @@ class Soric3::Kernel with Soric3::Meta::Alertable {
                      _unload_module => 'delete' },
     );
 
+    has client_class => (
+        required => 1,
+        isa      => 'Moose::Meta::Class',
+        is       => 'ro', # XXX maybe this should be rw, and support dynamic
+                          # munging of client classes?  I like this
+    );
+
     # Do a preorder traversal of the module dependancy tree, instantiating and
     # binding all new modules, and removing unused ones.
     method _load_module(HashRef $used, Str $name where { $_ =~ /^[a-z]+$/ }) {
